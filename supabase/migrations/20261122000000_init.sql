@@ -444,3 +444,21 @@ CREATE POLICY "Owner access to audit_logs" ON audit_logs
     FOR ALL TO authenticated
     USING (true)
     WITH CHECK (true);
+
+-- Explicit table privileges are required in addition to RLS policies. These
+-- grants also cover projects where default privileges were changed or tables
+-- were created from the SQL editor.
+GRANT USAGE ON SCHEMA public TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+    company_settings,
+    customers,
+    products_services,
+    quotations,
+    quotation_items,
+    invoices,
+    invoice_items,
+    payments,
+    credit_notes,
+    expenses,
+    audit_logs
+TO authenticated, service_role;

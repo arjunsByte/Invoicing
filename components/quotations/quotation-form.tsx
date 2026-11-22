@@ -19,7 +19,10 @@ interface QuotationFormProps {
 export function QuotationForm({ companySettings, customers, products }: QuotationFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const preselectedCustId = searchParams.get("customerId") || (customers[0]?.id || "");
+  const requestedCustomerId = searchParams.get("customerId");
+  const preselectedCustId = requestedCustomerId && customers.some((customer) => customer.id === requestedCustomerId)
+    ? requestedCustomerId
+    : customers[0]?.id || "";
 
   const [quotationType, setQuotationType] = useState<"gst" | "non_gst">(
     companySettings.is_gst_registered ? "gst" : "non_gst"
@@ -312,6 +315,7 @@ export function QuotationForm({ companySettings, customers, products }: Quotatio
               onChange={(e) => setCustomerId(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg"
             >
+              {!customers.length && <option value="">No customers available — add a customer first</option>}
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.company_name || c.contact_name}

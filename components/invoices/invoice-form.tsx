@@ -29,7 +29,10 @@ interface InvoiceFormProps {
 export function InvoiceForm({ companySettings, customers, products }: InvoiceFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const preselectedCustId = searchParams.get("customerId") || "";
+  const requestedCustomerId = searchParams.get("customerId");
+  const preselectedCustId = requestedCustomerId && customers.some((customer) => customer.id === requestedCustomerId)
+    ? requestedCustomerId
+    : customers[0]?.id || "";
 
   const [invoiceType, setInvoiceType] = useState<DocumentType>(
     companySettings.is_gst_registered ? "gst_tax_invoice" : "non_gst_invoice"
@@ -355,6 +358,7 @@ export function InvoiceForm({ companySettings, customers, products }: InvoiceFor
               onChange={(e) => setCustomerId(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
             >
+              {!customers.length && <option value="">No customers available — add a customer first</option>}
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.company_name || c.contact_name} {c.gstin ? `(${c.gstin})` : "(Non-GST)"}
