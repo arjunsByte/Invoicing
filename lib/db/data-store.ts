@@ -21,6 +21,16 @@ import path from "path";
 // In-memory or file-backed storage when Supabase is not connected
 const DATA_FILE_PATH = path.join(process.cwd(), ".local-data.json");
 
+let hasWarnedAboutFileStore = false;
+
+function warnAboutFileStore() {
+  if (hasWarnedAboutFileStore) return;
+  hasWarnedAboutFileStore = true;
+  console.warn(
+    "Supabase is not configured. Using the local JSON data store, which has no cross-process locking and can lose concurrent updates. Use a transactional database for multi-worker or multi-instance deployments."
+  );
+}
+
 interface LocalDataState {
   companySettings: CompanySettings;
   customers: Customer[];
@@ -506,6 +516,7 @@ const DEFAULT_QUOTATIONS: Quotation[] = [
 ];
 
 function loadLocalData(): LocalDataState {
+  warnAboutFileStore();
   try {
     if (fs.existsSync(DATA_FILE_PATH)) {
       const raw = fs.readFileSync(DATA_FILE_PATH, "utf-8");
@@ -532,8 +543,11 @@ function loadLocalData(): LocalDataState {
 }
 
 function saveLocalData(data: LocalDataState) {
+  warnAboutFileStore();
   try {
-    fs.writeFileSync(DATA_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
+    const tempPath = `${DATA_FILE_PATH}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), { encoding: "utf-8", flag: "wx" });
+    fs.renameSync(tempPath, DATA_FILE_PATH);
   } catch (e) {
     console.error("Failed to save local data", e);
   }
@@ -676,6 +690,19 @@ export async function createInvoice(invoiceData: Partial<Invoice>): Promise<Invo
 
   const customer = data.customers.find((c) => c.id === invoiceData.customer_id) || {};
 
+  const normalizedItems: InvoiceItem[] = (invoiceData.items || []).map((item, index) => {
+    const tax = calculateLineItemTax(item, invoiceData.is_interstate === true, invoiceData.invoice_type !== "non_gst_invoice");
+    return {
+      item_description: String(item.item_description || "").slice(0, 500),
+      sac_hsn_code: item.sac_hsn_code,
+      quantity: Number(item.quantity), unit: String(item.unit || "unit"), unit_price: Number(item.unit_price),
+      discount_percent: Number(item.discount_percent) || 0, gst_rate: Number(item.gst_rate) || 0,
+      ...tax, sort_order: index + 1,
+    };
+  });
+  const discountType = invoiceData.discount_type === "fixed" ? "fixed" : "percentage";
+  const discountValue = Math.max(0, Number(invoiceData.discount_value) || 0);
+  const totals = calculateDocumentTotals(normalizedItems, discountType, discountValue, true);
   const newInvoice: Invoice = {
     id: `inv-${Date.now()}`,
     invoice_number: invoiceData.invoice_number || nextNumber,
@@ -695,25 +722,25 @@ export async function createInvoice(invoiceData: Partial<Invoice>): Promise<Invo
     reverse_charge: invoiceData.reverse_charge || false,
     currency: invoiceData.currency || settings.default_currency,
     exchange_rate: 1.0,
-    subtotal: Number(invoiceData.subtotal) || 0,
-    discount_type: invoiceData.discount_type || "percentage",
-    discount_value: Number(invoiceData.discount_value) || 0,
-    discount_amount: Number(invoiceData.discount_amount) || 0,
-    taxable_amount: Number(invoiceData.taxable_amount) || 0,
-    cgst_amount: Number(invoiceData.cgst_amount) || 0,
-    sgst_amount: Number(invoiceData.sgst_amount) || 0,
-    igst_amount: Number(invoiceData.igst_amount) || 0,
-    total_tax: Number(invoiceData.total_tax) || 0,
-    round_off: Number(invoiceData.round_off) || 0,
-    total_amount: Number(invoiceData.total_amount) || 0,
+    subtotal: totals.subtotal,
+    discount_type: discountType,
+    discount_value: discountValue,
+    discount_amount: totals.discount_amount,
+    taxable_amount: totals.taxable_amount,
+    cgst_amount: totals.cgst_amount,
+    sgst_amount: totals.sgst_amount,
+    igst_amount: totals.igst_amount,
+    total_tax: totals.total_tax,
+    round_off: totals.round_off,
+    total_amount: totals.total_amount,
     amount_paid: 0,
-    balance_due: Number(invoiceData.total_amount) || 0,
-    amount_in_words: numberToIndianWords(Number(invoiceData.total_amount) || 0),
+    balance_due: totals.total_amount,
+    amount_in_words: numberToIndianWords(totals.total_amount),
     notes: invoiceData.notes || settings.default_notes,
     terms_and_conditions: invoiceData.terms_and_conditions || settings.terms_and_conditions,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    items: invoiceData.items || [],
+    items: normalizedItems,
   };
 
   data.invoices.unshift(newInvoice);

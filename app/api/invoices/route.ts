@@ -6,7 +6,7 @@ export async function GET() {
     const invoices = await getInvoices();
     return NextResponse.json(invoices);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }
 
@@ -33,9 +33,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const created = await createInvoice(body);
+    const created = await createInvoice({
+      customer_id: body.customer_id,
+      invoice_type: body.invoice_type,
+      quotation_id: body.quotation_id,
+      invoice_date: body.invoice_date,
+      due_date: body.due_date,
+      status: body.status === "issued" ? "issued" : "draft",
+      place_of_supply: body.place_of_supply,
+      place_of_supply_state_code: body.place_of_supply_state_code,
+      is_interstate: body.is_interstate === true,
+      reverse_charge: body.reverse_charge === true,
+      currency: body.currency,
+      discount_type: body.discount_type,
+      discount_value: body.discount_value,
+      notes: body.notes,
+      terms_and_conditions: body.terms_and_conditions,
+      items: body.items,
+    });
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }

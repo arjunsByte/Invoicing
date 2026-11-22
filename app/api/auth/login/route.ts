@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest) {
@@ -18,37 +17,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Try Supabase Auth if live credentials are configured
+    // Never accept a password without a configured identity provider.
     const isLiveSupabase =
       process.env.NEXT_PUBLIC_SUPABASE_URL &&
       !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project") &&
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
       !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.includes("placeholder");
 
-    if (isLiveSupabase) {
+    if (!isLiveSupabase) {
+      return NextResponse.json({ error: "Authentication is not configured." }, { status: 503 });
+    }
+    {
       const supabase = await createServerSupabaseClient();
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 401 });
+      if (error || data.user?.email?.toLowerCase() !== ownerEmail) {
+        return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
       }
     }
 
-    // Set owner session cookie for SSR middleware verification
-    const cookieStore = await cookies();
-    cookieStore.set("qorva_owner_session", "authenticated", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-    });
-
     return NextResponse.json({ success: true, email: ownerEmail });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("Login failed", error);
+    return NextResponse.json({ error: "Unable to sign in." }, { status: 500 });
   }
 }

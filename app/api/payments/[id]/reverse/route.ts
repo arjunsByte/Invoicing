@@ -16,6 +16,6 @@ export async function POST(
     const reversed = await reversePayment(id, body.reason);
     return NextResponse.json(reversed);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 400 });
   }
 }

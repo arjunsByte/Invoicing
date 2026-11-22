@@ -24,6 +24,6 @@ export async function POST(
 
     return NextResponse.json(payment, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 400 });
   }
 }

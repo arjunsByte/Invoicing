@@ -61,6 +61,8 @@ This system is an internal financial tool and management suite. Customers **neve
 5. (Optional) Run `supabase/seed.sql` for realistic initial company profiles and catalogues.
 
 ### B. Vercel Deployment
+The application uses Supabase when configured. Its local JSON fallback (`.local-data.json`) uses atomic file replacement, but does not lock across processes; concurrent writes from multiple workers or instances can overwrite each other. Do not use the JSON fallback for multi-instance deployments. Configure Supabase or another transactional database before deploying that way. The application logs a warning when it uses the JSON fallback.
+
 1. Push repository to GitHub.
 2. In Vercel, click **"Add New Project"** and import the repository.
 3. Configure the following Environment Variables in Vercel:

@@ -6,7 +6,7 @@ export async function GET() {
     const products = await getProductsServices();
     return NextResponse.json(products);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }
 
@@ -19,6 +19,6 @@ export async function POST(req: NextRequest) {
     const created = await createProductService(body);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }

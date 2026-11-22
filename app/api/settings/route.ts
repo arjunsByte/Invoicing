@@ -6,7 +6,7 @@ export async function GET() {
     const settings = await getCompanySettings();
     return NextResponse.json(settings);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }
 
@@ -16,6 +16,6 @@ export async function PUT(req: NextRequest) {
     const updated = await updateCompanySettings(body);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }

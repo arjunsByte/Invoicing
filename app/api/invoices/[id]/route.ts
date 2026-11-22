@@ -13,7 +13,7 @@ export async function GET(
     }
     return NextResponse.json(invoice);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }
 
@@ -30,9 +30,17 @@ export async function PUT(
       return NextResponse.json(cancelled);
     }
 
-    const updated = await updateInvoice(id, body);
+    const allowedUpdates = {
+      ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
+      ...(typeof body.terms_and_conditions === "string" ? { terms_and_conditions: body.terms_and_conditions } : {}),
+      ...(typeof body.due_date === "string" ? { due_date: body.due_date } : {}),
+    };
+    if (!Object.keys(allowedUpdates).length) {
+      return NextResponse.json({ error: "No editable invoice fields supplied." }, { status: 400 });
+    }
+    const updated = await updateInvoice(id, allowedUpdates);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 400 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public paths that do not require owner session
@@ -14,20 +15,34 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for owner session cookie or Supabase auth token
-  const ownerSession = request.cookies.get("qorva_owner_session");
-  const supabaseToken = request.cookies.get("sb-access-token") || request.cookies.get("supabase-auth-token");
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key || url.includes("placeholder") || key.includes("placeholder")) {
+    return pathname.startsWith("/api/")
+      ? NextResponse.json({ error: "Authentication is not configured." }, { status: 503 })
+      : NextResponse.redirect(new URL("/login", request.url));
+  }
 
-  // In production or when authenticated, verify session
-  // If no session exists, redirect to private owner login
-  if (!ownerSession && !supabaseToken) {
-    // For local development convenience if first load, we can redirect to /login
+  let response = NextResponse.next({ request });
+  const supabase = createServerClient(url, key, {
+    cookies: {
+      getAll: () => request.cookies.getAll(),
+      setAll: (cookiesToSet) => {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+      },
+    },
+  });
+  const { data: { user } } = await supabase.auth.getUser();
+  const ownerEmail = (process.env.OWNER_EMAIL || "owner@qorvalabs.com").trim().toLowerCase();
+  if (!user || user.email?.toLowerCase() !== ownerEmail) {
+    if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
-
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {

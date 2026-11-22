@@ -6,7 +6,7 @@ export async function GET() {
     const expenses = await getExpenses();
     return NextResponse.json(expenses);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }
 
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }
 
@@ -51,6 +51,6 @@ export async function DELETE(req: NextRequest) {
     const success = await deleteExpense(id);
     return NextResponse.json({ success });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }
