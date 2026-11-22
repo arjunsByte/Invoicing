@@ -14,6 +14,7 @@ import {
   AlertCircle,
   CreditCard,
   FileText,
+  Trash2,
 } from "lucide-react";
 import { Invoice, Customer } from "@/lib/types/database";
 import { formatINR } from "@/lib/financial/number-to-words";
@@ -30,6 +31,20 @@ export function InvoicesView({ initialInvoices, customers }: InvoicesViewProps) 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [deleteError, setDeleteError] = useState("");
+
+  const handleDeleteInvoice = async (invoice: Invoice) => {
+    if (!window.confirm(`Delete draft invoice ${invoice.invoice_number}? Only unpaid drafts can be deleted.`)) return;
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}`, { method: "DELETE" });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to delete invoice.");
+      setInvoices((prev) => prev.filter((item) => item.id !== invoice.id));
+    } catch (error: any) {
+      setDeleteError(error.message || "Failed to delete invoice.");
+    }
+  };
 
   const todayStr = new Date().toISOString().split("T")[0];
 
@@ -88,6 +103,8 @@ export function InvoicesView({ initialInvoices, customers }: InvoicesViewProps) 
           Create New Invoice
         </Link>
       </div>
+
+      {deleteError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">{deleteError}</div>}
 
       {/* Mini KPI Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -267,6 +284,7 @@ export function InvoicesView({ initialInvoices, customers }: InvoicesViewProps) 
                           >
                             <Download className="h-4 w-4" />
                           </button>
+                          {inv.status === "draft" && <button onClick={() => handleDeleteInvoice(inv)} aria-label={`Delete ${inv.invoice_number}`} title="Delete draft invoice" className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>}
                         </div>
                       </td>
                     </tr>

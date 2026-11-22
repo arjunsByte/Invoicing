@@ -5,14 +5,14 @@ import { formatINR } from "@/lib/financial/number-to-words";
 
 export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: boolean = false) {
   const doc = new jsPDF({
-    orientation: "portrait",
+    orientation: "landscape",
     unit: "mm",
     format: "a4",
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 14;
+  const margin = 12;
 
   const company = docData.company_snapshot || {};
   const customer = docData.customer_snapshot || {};
@@ -49,7 +49,15 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
   doc.setTextColor(15, 23, 42);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text(company.company_name || "QORVA LABS LLP", margin, y);
+  const logo = company.logo_url;
+  let companyTextX = margin;
+  if (logo && /^data:image\/(png|jpeg);base64,/.test(logo)) {
+    try {
+      doc.addImage(logo, logo.startsWith("data:image/png") ? "PNG" : "JPEG", margin, y - 5, 22, 14, undefined, "FAST");
+      companyTextX = margin + 25;
+    } catch { /* Ignore invalid image data and keep the invoice readable. */ }
+  }
+  doc.text(company.company_name || "", companyTextX, y, { maxWidth: 105 - (companyTextX - margin) });
 
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
@@ -63,19 +71,19 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
     doc.text(`${company.address_line1}, ${company.address_line2 || ""}`, margin, y);
     y += 4;
   }
-  doc.text(`${company.city || "Mumbai"}, ${company.state || "Maharashtra"} - ${company.pincode || "400064"}, ${company.country || "India"}`, margin, y);
-  y += 4;
-  doc.text(`Email: ${company.email || "accounts@qorvalabs.com"} | Phone: ${company.phone || "+91 98200 12345"}`, margin, y);
-  y += 4;
+  const location = [company.city, company.state, company.pincode, company.country].filter(Boolean).join(", ");
+  if (location) { doc.text(location, margin, y, { maxWidth: 105 }); y += 4; }
+  const contact = [company.email, company.phone].filter(Boolean).join(" | ");
+  if (contact) { doc.text(contact, margin, y, { maxWidth: 105 }); y += 4; }
   
   if (company.llpin) {
-    doc.text(`LLPIN: ${company.llpin} | PAN: ${company.pan || "AABFQ1234K"}`, margin, y);
+    doc.text(`LLPIN: ${company.llpin}${company.pan ? ` | PAN: ${company.pan}` : ""}`, margin, y, { maxWidth: 105 });
     y += 4;
   }
   if (isGst && company.gstin) {
     doc.setFont("helvetica", "bold");
     doc.setTextColor(15, 23, 42);
-    doc.text(`GSTIN: ${company.gstin} (State Code: ${company.state_code || "27"})`, margin, y);
+    doc.text(`GSTIN: ${company.gstin}${company.state_code ? ` (State Code: ${company.state_code})` : ""}`, margin, y, { maxWidth: 105 });
     doc.setFont("helvetica", "normal");
     y += 4;
   }
@@ -106,7 +114,7 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
   rightY += 4.5;
 
   if (isGst) {
-    doc.text(`Place of Supply: ${docData.place_of_supply || "Maharashtra (27)"}`, rightColX, rightY);
+    doc.text(`Place of Supply: ${docData.place_of_supply || ""}`, rightColX, rightY, { maxWidth: pageWidth - margin - rightColX });
     rightY += 4.5;
     doc.text(`Reverse Charge Applicable: ${(docData as Invoice).reverse_charge ? "Yes" : "No"}`, rightColX, rightY);
     rightY += 4.5;
@@ -128,10 +136,10 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
   y += 4.5;
 
   doc.setFontSize(9);
-  const custName = customer.company_name 
-    ? `${customer.company_name} (Attn: ${customer.contact_name})` 
-    : customer.contact_name || "Valued Client";
-  doc.text(custName, margin, y);
+  const custName = customer.company_name
+    ? `${customer.company_name}${customer.contact_name ? ` (Attn: ${customer.contact_name})` : ""}`
+    : customer.contact_name || "";
+  doc.text(custName, margin, y, { maxWidth: 125 });
   y += 4;
 
   doc.setFontSize(8);
@@ -141,8 +149,8 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
     doc.text(`${customer.billing_address}, ${customer.billing_city || ""}`, margin, y);
     y += 4;
   }
-  doc.text(`${customer.billing_state || ""}${customer.billing_pincode ? " - " + customer.billing_pincode : ""}, ${customer.billing_country || "India"}`, margin, y);
-  y += 4;
+  const customerLocation = [customer.billing_state, customer.billing_pincode, customer.billing_country].filter(Boolean).join(" - ");
+  if (customerLocation) { doc.text(customerLocation, margin, y, { maxWidth: 125 }); y += 4; }
   if (customer.email || customer.phone) {
     doc.text(`Email: ${customer.email || "N/A"} | Phone: ${customer.phone || "N/A"}`, margin, y);
     y += 4;
@@ -173,7 +181,7 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
       tableRows = items.map((item, idx) => [
         idx + 1,
         item.item_description,
-        item.sac_hsn_code || "998314",
+        item.sac_hsn_code || "",
         `${item.quantity} ${item.unit || ""}`,
         formatINR(item.unit_price, "₹"),
         formatINR(item.taxable_amount, "₹"),
@@ -186,7 +194,7 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
       tableRows = items.map((item, idx) => [
         idx + 1,
         item.item_description,
-        item.sac_hsn_code || "998314",
+        item.sac_hsn_code || "",
         `${item.quantity} ${item.unit || ""}`,
         formatINR(item.unit_price, "₹"),
         formatINR(item.taxable_amount, "₹"),
@@ -219,13 +227,13 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
       fontSize: 8,
     },
     styles: {
-      fontSize: 7.5,
+      fontSize: isGst ? 7 : 8,
       textColor: [30, 41, 59],
       cellPadding: 2.5,
     },
     columnStyles: {
       0: { cellWidth: 8, halign: "center" },
-      1: { cellWidth: "auto" },
+      1: { cellWidth: isGst ? 64 : 90 },
     },
     margin: { left: margin, right: margin },
   });
@@ -248,7 +256,7 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
   doc.text("Amount in Words:", margin, finalY);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(51, 65, 85);
-  doc.text(docData.amount_in_words || "Rupees Zero Only", margin, finalY + 4, { maxWidth: totalsX - margin - 5 });
+  doc.text(docData.amount_in_words || "", margin, finalY + 4, { maxWidth: totalsX - margin - 5 });
 
   let bankY = finalY + 12;
   doc.setFont("helvetica", "bold");
@@ -257,14 +265,13 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
   doc.setFont("helvetica", "normal");
   doc.setTextColor(71, 85, 105);
   bankY += 4;
-  doc.text(`Bank Name: ${company.bank_name || "HDFC Bank Ltd"}`, margin, bankY);
-  bankY += 3.8;
-  doc.text(`Account Holder: ${company.bank_account_holder || "QORVA LABS LLP"}`, margin, bankY);
-  bankY += 3.8;
-  doc.text(`Account No: ${company.bank_account_no || "50200088991122"}`, margin, bankY);
-  bankY += 3.8;
-  doc.text(`IFSC Code: ${company.bank_ifsc || "HDFC0001234"} | Branch: ${company.bank_branch || "Malad West, Mumbai"}`, margin, bankY);
-  bankY += 3.8;
+  const bankLines = [
+    company.bank_name && `Bank Name: ${company.bank_name}`,
+    company.bank_account_holder && `Account Holder: ${company.bank_account_holder}`,
+    company.bank_account_no && `Account No: ${company.bank_account_no}`,
+    [company.bank_ifsc && `IFSC Code: ${company.bank_ifsc}`, company.bank_branch && `Branch: ${company.bank_branch}`].filter(Boolean).join(" | "),
+  ].filter(Boolean) as string[];
+  for (const line of bankLines) { doc.text(line, margin, bankY, { maxWidth: totalsX - margin - 5 }); bankY += 3.8; }
   if (company.upi_id) {
     doc.text(`UPI ID: ${company.upi_id}`, margin, bankY);
     bankY += 3.8;
@@ -321,11 +328,11 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 116, 139);
-  doc.text("Thank you for your business. Disputes subject to Mumbai jurisdiction.", margin, footerY);
+  doc.text("Thank you for your business.", margin, footerY);
 
   doc.setFont("helvetica", "bold");
   doc.setTextColor(15, 23, 42);
-  doc.text(`For ${company.company_name || "QORVA LABS LLP"}`, pageWidth - margin, footerY - 5, { align: "right" });
+  if (company.company_name) doc.text(`For ${company.company_name}`, pageWidth - margin, footerY - 5, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.text("Authorized Signatory", pageWidth - margin, footerY, { align: "right" });
 

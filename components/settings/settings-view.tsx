@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Save,
   Shield,
+  ImagePlus,
 } from "lucide-react";
 import { CompanySettings } from "@/lib/types/database";
 import { INDIAN_STATES } from "@/lib/financial/invoice-numbering";
@@ -181,6 +182,25 @@ export function SettingsView({ initialSettings }: SettingsViewProps) {
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-2"><ImagePlus className="mr-1 inline h-4 w-4" />Company logo</label>
+              <div className="flex items-center gap-4">
+                {settings.logo_url ? <img src={settings.logo_url} alt="Company logo preview" className="h-14 max-w-40 rounded border border-slate-200 object-contain p-1" /> : <div className="flex h-14 w-32 items-center justify-center rounded border border-dashed border-slate-300 text-xs text-slate-400">No logo selected</div>}
+                <div>
+              <input type="file" accept="image/png,image/jpeg" onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (!/^image\/(png|jpeg)$/.test(file.type)) { setErrorMsg("Please choose a PNG or JPG logo."); e.currentTarget.value = ""; return; }
+                    if (file.size > 1024 * 1024) { setErrorMsg("Logo must be 1 MB or smaller."); e.currentTarget.value = ""; return; }
+                    const reader = new FileReader();
+                    reader.onload = () => { setSettings((prev) => ({ ...prev, logo_url: String(reader.result) })); setErrorMsg(""); };
+                    reader.readAsDataURL(file);
+                  }} className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-xs file:font-semibold" />
+                  <p className="mt-1 text-[10px] text-slate-500">PNG or JPG. Saved with company settings and used on new invoices (max 1 MB).</p>
+                  {settings.logo_url && <button type="button" onClick={() => setSettings((prev) => ({ ...prev, logo_url: "" }))} className="mt-1 text-xs text-rose-600 hover:underline">Remove logo</button>}
+                </div>
+              </div>
+            </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Entity Legal Name *

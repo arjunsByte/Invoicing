@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCustomers, createCustomer } from "@/lib/db/data-store";
+import { getCustomers, createCustomer, deleteCustomer } from "@/lib/db/data-store";
 
 export async function GET() {
   try {
@@ -7,6 +7,18 @@ export async function GET() {
     return NextResponse.json(customers);
   } catch (error: any) {
     return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "Customer ID is required." }, { status: 400 });
+    const success = await deleteCustomer(id);
+    if (!success) return NextResponse.json({ error: "Customer not found." }, { status: 404 });
+    return NextResponse.json({ success });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Request could not be completed." }, { status: 400 });
   }
 }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getInvoiceById, updateInvoice, cancelInvoice } from "@/lib/db/data-store";
+import { getInvoiceById, updateInvoice, cancelInvoice, deleteInvoice } from "@/lib/db/data-store";
 
 export async function GET(
   req: NextRequest,
@@ -42,5 +42,19 @@ export async function PUT(
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json({ error: "Request could not be completed." }, { status: 400 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const success = await deleteInvoice(id);
+    if (!success) return NextResponse.json({ error: "Invoice not found." }, { status: 404 });
+    return NextResponse.json({ success });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Request could not be completed." }, { status: 400 });
   }
 }

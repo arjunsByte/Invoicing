@@ -15,6 +15,7 @@ import {
   Filter,
   Check,
   X,
+  Trash2,
 } from "lucide-react";
 import { Customer } from "@/lib/types/database";
 import { formatINR } from "@/lib/financial/number-to-words";
@@ -32,6 +33,20 @@ export function CustomersView({ initialCustomers }: CustomersViewProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+
+  const handleDeleteCustomer = async (customer: Customer) => {
+    if (!window.confirm(`Delete ${customer.company_name || customer.contact_name}? Customers with invoices or quotations cannot be deleted.`)) return;
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/customers?id=${encodeURIComponent(customer.id)}`, { method: "DELETE" });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to delete customer.");
+      setCustomers((prev) => prev.filter((item) => item.id !== customer.id));
+    } catch (error: any) {
+      setDeleteError(error.message || "Failed to delete customer.");
+    }
+  };
 
   // New customer form state
   const [formData, setFormData] = useState({
@@ -167,6 +182,8 @@ export function CustomersView({ initialCustomers }: CustomersViewProps) {
         </button>
       </div>
 
+      {deleteError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">{deleteError}</div>}
+
       {/* Filter & Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
         <div className="relative w-full sm:w-80">
@@ -301,12 +318,10 @@ export function CustomersView({ initialCustomers }: CustomersViewProps) {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <Link
-                        href={`/customers/${cust.id}`}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-slate-900 hover:text-slate-600"
-                      >
-                        History →
-                      </Link>
+                      <div className="inline-flex items-center gap-3">
+                        <Link href={`/customers/${cust.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-900 hover:text-slate-600">History →</Link>
+                        <button onClick={() => handleDeleteCustomer(cust)} aria-label={`Delete ${cust.contact_name}`} title="Delete customer" className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
+                      </div>
                     </td>
                   </tr>
                 ))

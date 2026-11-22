@@ -81,439 +81,12 @@ const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
   updated_at: new Date().toISOString(),
 };
 
-const DEFAULT_CUSTOMERS: Customer[] = [
-  {
-    id: "c0000000-0000-0000-0000-000000000001",
-    customer_type: "business",
-    company_name: "Apex Omnitech Private Limited",
-    contact_name: "Rohan Mehta",
-    email: "rohan@apexomnitech.com",
-    phone: "+91 99300 44556",
-    billing_address: "Plot 18, Sector 12, BKC",
-    billing_city: "Mumbai",
-    billing_state: "Maharashtra",
-    billing_state_code: "27",
-    billing_pincode: "400051",
-    billing_country: "India",
-    gstin: "27AABCA5566K1Z1",
-    pan: "AABCA5566K",
-    preferred_currency: "INR",
-    notes: "Key enterprise client for cloud DevOps services.",
-    is_archived: false,
-    created_at: "2026-08-15T10:00:00Z",
-    updated_at: "2026-08-15T10:00:00Z",
-  },
-  {
-    id: "c0000000-0000-0000-0000-000000000002",
-    customer_type: "business",
-    company_name: "Zenith FinServe Corp",
-    contact_name: "Priya Sharma",
-    email: "priya@zenithfinserve.in",
-    phone: "+91 98450 77889",
-    billing_address: "Level 5, Cyber Gateway, Hitec City",
-    billing_city: "Hyderabad",
-    billing_state: "Telangana",
-    billing_state_code: "36",
-    billing_pincode: "500081",
-    billing_country: "India",
-    gstin: "36AAACZ1122M1ZX",
-    pan: "AAACZ1122M",
-    preferred_currency: "INR",
-    notes: "Interstate client requiring IGST invoicing.",
-    is_archived: false,
-    created_at: "2026-09-01T11:30:00Z",
-    updated_at: "2026-09-01T11:30:00Z",
-  },
-  {
-    id: "c0000000-0000-0000-0000-000000000003",
-    customer_type: "individual",
-    contact_name: "Dr. Vikramaditya Rao",
-    email: "vikram.rao@neuralmed.org",
-    phone: "+91 98111 22334",
-    billing_address: "Flat 401, Ashoka Enclave",
-    billing_city: "New Delhi",
-    billing_state: "Delhi",
-    billing_state_code: "07",
-    billing_pincode: "110001",
-    billing_country: "India",
-    pan: "ABCPR9988D",
-    preferred_currency: "INR",
-    notes: "Specialized AI healthcare consulting.",
-    is_archived: false,
-    created_at: "2026-10-10T14:20:00Z",
-    updated_at: "2026-10-10T14:20:00Z",
-  },
-];
-
-const DEFAULT_PRODUCTS: ProductService[] = [
-  {
-    id: "b0000000-0000-0000-0000-000000000001",
-    name: "Custom Software Architecture & Dev",
-    description: "Full-stack web application engineering and scalable cloud backend systems.",
-    type: "service",
-    sac_hsn_code: "998314",
-    unit: "months",
-    default_price: 150000.0,
-    gst_rate: 18.0,
-    is_active: true,
-    created_at: "2026-08-01T00:00:00Z",
-    updated_at: "2026-08-01T00:00:00Z",
-  },
-  {
-    id: "b0000000-0000-0000-0000-000000000002",
-    name: "Cloud Infrastructure & DevOps Setup",
-    description: "Terraform orchestration, Kubernetes deployment, and CI/CD pipelines.",
-    type: "service",
-    sac_hsn_code: "998313",
-    unit: "fixed",
-    default_price: 75000.0,
-    gst_rate: 18.0,
-    is_active: true,
-    created_at: "2026-08-01T00:00:00Z",
-    updated_at: "2026-08-01T00:00:00Z",
-  },
-  {
-    id: "b0000000-0000-0000-0000-000000000003",
-    name: "AI Model Fine-tuning & Integration",
-    description: "Custom LLM fine-tuning, RAG pipeline setup, and vector search indexing.",
-    type: "service",
-    sac_hsn_code: "998314",
-    unit: "fixed",
-    default_price: 120000.0,
-    gst_rate: 18.0,
-    is_active: true,
-    created_at: "2026-08-01T00:00:00Z",
-    updated_at: "2026-08-01T00:00:00Z",
-  },
-  {
-    id: "b0000000-0000-0000-0000-000000000004",
-    name: "Security Audit & Vulnerability Assessment",
-    description: "Comprehensive penetration testing, OWASP compliance review and code audit.",
-    type: "service",
-    sac_hsn_code: "998315",
-    unit: "fixed",
-    default_price: 50000.0,
-    gst_rate: 18.0,
-    is_active: true,
-    created_at: "2026-08-01T00:00:00Z",
-    updated_at: "2026-08-01T00:00:00Z",
-  },
-];
-
-const DEFAULT_INVOICES: Invoice[] = [
-  {
-    id: "inv-001",
-    invoice_number: "QORVA/TAX/26-27/001",
-    invoice_type: "gst_tax_invoice",
-    financial_year: "2026-2027",
-    customer_id: "c0000000-0000-0000-0000-000000000001",
-    customer_snapshot: DEFAULT_CUSTOMERS[0],
-    company_snapshot: DEFAULT_COMPANY_SETTINGS,
-    invoice_date: "2026-10-15",
-    due_date: "2026-10-30",
-    status: "paid",
-    is_locked: true,
-    place_of_supply: "Maharashtra (27)",
-    place_of_supply_state_code: "27",
-    is_interstate: false,
-    reverse_charge: false,
-    currency: "INR",
-    exchange_rate: 1.0,
-    subtotal: 150000.0,
-    discount_type: "percentage",
-    discount_value: 0,
-    discount_amount: 0,
-    taxable_amount: 150000.0,
-    cgst_amount: 13500.0,
-    sgst_amount: 13500.0,
-    igst_amount: 0,
-    total_tax: 27000.0,
-    round_off: 0,
-    total_amount: 177000.0,
-    amount_paid: 177000.0,
-    balance_due: 0,
-    amount_in_words: "Rupees One Lakh Seventy Seven Thousand Only",
-    notes: "Payment settled in full via NEFT.",
-    created_at: "2026-10-15T09:00:00Z",
-    updated_at: "2026-10-20T11:00:00Z",
-    items: [
-      {
-        id: "item-001",
-        invoice_id: "inv-001",
-        item_description: "Custom Software Architecture & Dev - Oct 2026 Milestone",
-        sac_hsn_code: "998314",
-        quantity: 1,
-        unit: "months",
-        unit_price: 150000.0,
-        discount_percent: 0,
-        taxable_amount: 150000.0,
-        gst_rate: 18.0,
-        cgst_rate: 9.0,
-        cgst_amount: 13500.0,
-        sgst_rate: 9.0,
-        sgst_amount: 13500.0,
-        igst_rate: 0,
-        igst_amount: 0,
-        total_amount: 177000.0,
-        sort_order: 1,
-      },
-    ],
-  },
-  {
-    id: "inv-002",
-    invoice_number: "QORVA/TAX/26-27/002",
-    invoice_type: "gst_tax_invoice",
-    financial_year: "2026-2027",
-    customer_id: "c0000000-0000-0000-0000-000000000002",
-    customer_snapshot: DEFAULT_CUSTOMERS[1],
-    company_snapshot: DEFAULT_COMPANY_SETTINGS,
-    invoice_date: "2026-11-05",
-    due_date: "2026-11-20",
-    status: "partially_paid",
-    is_locked: true,
-    place_of_supply: "Telangana (36)",
-    place_of_supply_state_code: "36",
-    is_interstate: true,
-    reverse_charge: false,
-    currency: "INR",
-    exchange_rate: 1.0,
-    subtotal: 120000.0,
-    discount_type: "percentage",
-    discount_value: 0,
-    discount_amount: 0,
-    taxable_amount: 120000.0,
-    cgst_amount: 0,
-    sgst_amount: 0,
-    igst_amount: 21600.0,
-    total_tax: 21600.0,
-    round_off: 0,
-    total_amount: 141600.0,
-    amount_paid: 70000.0,
-    balance_due: 71600.0,
-    amount_in_words: "Rupees One Lakh Forty One Thousand Six Hundred Only",
-    notes: "Interstate IGST transaction. Part payment received via RTGS.",
-    created_at: "2026-11-05T10:00:00Z",
-    updated_at: "2026-11-12T14:30:00Z",
-    items: [
-      {
-        id: "item-002",
-        invoice_id: "inv-002",
-        item_description: "AI Model Fine-tuning & Integration (Phase 1)",
-        sac_hsn_code: "998314",
-        quantity: 1,
-        unit: "fixed",
-        unit_price: 120000.0,
-        discount_percent: 0,
-        taxable_amount: 120000.0,
-        gst_rate: 18.0,
-        cgst_rate: 0,
-        cgst_amount: 0,
-        sgst_rate: 0,
-        sgst_amount: 0,
-        igst_rate: 18.0,
-        igst_amount: 21600.0,
-        total_amount: 141600.0,
-        sort_order: 1,
-      },
-    ],
-  },
-  {
-    id: "inv-003",
-    invoice_number: "QORVA/INV/26-27/003",
-    invoice_type: "non_gst_invoice",
-    financial_year: "2026-2027",
-    customer_id: "c0000000-0000-0000-0000-000000000003",
-    customer_snapshot: DEFAULT_CUSTOMERS[2],
-    company_snapshot: DEFAULT_COMPANY_SETTINGS,
-    invoice_date: "2026-11-18",
-    due_date: "2026-12-02",
-    status: "issued",
-    is_locked: true,
-    place_of_supply: "Delhi (07)",
-    place_of_supply_state_code: "07",
-    is_interstate: true,
-    reverse_charge: false,
-    currency: "INR",
-    exchange_rate: 1.0,
-    subtotal: 50000.0,
-    discount_type: "percentage",
-    discount_value: 0,
-    discount_amount: 0,
-    taxable_amount: 50000.0,
-    cgst_amount: 0,
-    sgst_amount: 0,
-    igst_amount: 0,
-    total_tax: 0,
-    round_off: 0,
-    total_amount: 50000.0,
-    amount_paid: 0,
-    balance_due: 50000.0,
-    amount_in_words: "Rupees Fifty Thousand Only",
-    notes: "Commercial invoice for direct advisory consulting.",
-    created_at: "2026-11-18T16:00:00Z",
-    updated_at: "2026-11-18T16:00:00Z",
-    items: [
-      {
-        id: "item-003",
-        invoice_id: "inv-003",
-        item_description: "Advisory & Medical AI Systems Architecture Review",
-        quantity: 1,
-        unit: "fixed",
-        unit_price: 50000.0,
-        discount_percent: 0,
-        taxable_amount: 50000.0,
-        gst_rate: 0,
-        cgst_rate: 0,
-        cgst_amount: 0,
-        sgst_rate: 0,
-        sgst_amount: 0,
-        igst_rate: 0,
-        igst_amount: 0,
-        total_amount: 50000.0,
-        sort_order: 1,
-      },
-    ],
-  },
-];
-
-const DEFAULT_PAYMENTS: Payment[] = [
-  {
-    id: "pay-001",
-    payment_number: "REC/26-27/001",
-    invoice_id: "inv-001",
-    customer_id: "c0000000-0000-0000-0000-000000000001",
-    amount: 177000.0,
-    payment_date: "2026-10-20",
-    payment_method: "bank_transfer",
-    transaction_reference: "HDFCN2629381716",
-    notes: "Full invoice settlement received via HDFC NEFT.",
-    is_reversed: false,
-    created_at: "2026-10-20T11:00:00Z",
-    updated_at: "2026-10-20T11:00:00Z",
-  },
-  {
-    id: "pay-002",
-    payment_number: "REC/26-27/002",
-    invoice_id: "inv-002",
-    customer_id: "c0000000-0000-0000-0000-000000000002",
-    amount: 70000.0,
-    payment_date: "2026-11-12",
-    payment_method: "bank_transfer",
-    transaction_reference: "ICICIR552910128",
-    notes: "50% advance milestone payment via RTGS.",
-    is_reversed: false,
-    created_at: "2026-11-12T14:30:00Z",
-    updated_at: "2026-11-12T14:30:00Z",
-  },
-];
-
-const DEFAULT_EXPENSES: Expense[] = [
-  {
-    id: "exp-001",
-    expense_number: "EXP/26-27/001",
-    category: "cloud_hosting",
-    vendor_name: "Amazon Web Services (AWS)",
-    vendor_gstin: "27AABCA1234J1Z8",
-    expense_date: "2026-10-02",
-    description: "Production EC2, RDS, and S3 infrastructure bill.",
-    taxable_amount: 18500.0,
-    gst_amount: 3330.0,
-    total_amount: 21830.0,
-    payment_method: "credit_card",
-    notes: "Corporate credit card automated debit.",
-    created_at: "2026-10-02T05:00:00Z",
-    updated_at: "2026-10-02T05:00:00Z",
-  },
-  {
-    id: "exp-002",
-    expense_number: "EXP/26-27/002",
-    category: "software_subscriptions",
-    vendor_name: "GitHub / Microsoft",
-    vendor_gstin: "9918USA29000101",
-    expense_date: "2026-10-15",
-    description: "GitHub Enterprise Cloud & Copilot Business licences.",
-    taxable_amount: 8200.0,
-    gst_amount: 1476.0,
-    total_amount: 9676.0,
-    payment_method: "credit_card",
-    notes: "Annual software subscriptions.",
-    created_at: "2026-10-15T09:00:00Z",
-    updated_at: "2026-10-15T09:00:00Z",
-  },
-  {
-    id: "exp-003",
-    expense_number: "EXP/26-27/003",
-    category: "legal_professional",
-    vendor_name: "Kothari & Associates Chartered Accountants",
-    vendor_gstin: "27AAAFK8822L1ZP",
-    expense_date: "2026-11-01",
-    description: "Quarterly GST Filing and LLP Statutory Audit retainer.",
-    taxable_amount: 15000.0,
-    gst_amount: 2700.0,
-    total_amount: 17700.0,
-    payment_method: "bank_transfer",
-    notes: "Quarterly professional fee.",
-    created_at: "2026-11-01T12:00:00Z",
-    updated_at: "2026-11-01T12:00:00Z",
-  },
-];
-
-const DEFAULT_QUOTATIONS: Quotation[] = [
-  {
-    id: "quot-001",
-    quotation_number: "QORVA/EST/26-27/001",
-    quotation_type: "gst",
-    customer_id: "c0000000-0000-0000-0000-000000000002",
-    customer_snapshot: DEFAULT_CUSTOMERS[1],
-    company_snapshot: DEFAULT_COMPANY_SETTINGS,
-    quotation_date: "2026-11-10",
-    valid_until: "2026-12-10",
-    status: "pending",
-    place_of_supply: "Telangana (36)",
-    place_of_supply_state_code: "36",
-    is_interstate: true,
-    currency: "INR",
-    exchange_rate: 1.0,
-    subtotal: 180000.0,
-    discount_type: "percentage",
-    discount_value: 5,
-    discount_amount: 9000.0,
-    taxable_amount: 171000.0,
-    cgst_amount: 0,
-    sgst_amount: 0,
-    igst_amount: 30780.0,
-    total_tax: 30780.0,
-    round_off: 0,
-    total_amount: 201780.0,
-    amount_in_words: "Rupees Two Lakh One Thousand Seven Hundred Eighty Only",
-    notes: "Special 5% loyalty discount applied for enterprise contract.",
-    terms_and_conditions: "Proposal valid for 30 calendar days from issue date.",
-    created_at: "2026-11-10T11:00:00Z",
-    updated_at: "2026-11-10T11:00:00Z",
-    items: [
-      {
-        id: "qitem-001",
-        quotation_id: "quot-001",
-        item_description: "Cloud Security Architecture Review & SOC2 Audit Prep",
-        sac_hsn_code: "998315",
-        quantity: 1,
-        unit: "fixed",
-        unit_price: 180000.0,
-        discount_percent: 5,
-        taxable_amount: 171000.0,
-        gst_rate: 18.0,
-        cgst_rate: 0,
-        cgst_amount: 0,
-        sgst_rate: 0,
-        sgst_amount: 0,
-        igst_rate: 18.0,
-        igst_amount: 30780.0,
-        total_amount: 201780.0,
-        sort_order: 1,
-      },
-    ],
-  },
-];
+const DEFAULT_CUSTOMERS: Customer[] = [];
+const DEFAULT_PRODUCTS: ProductService[] = [];
+const DEFAULT_INVOICES: Invoice[] = [];
+const DEFAULT_PAYMENTS: Payment[] = [];
+const DEFAULT_EXPENSES: Expense[] = [];
+const DEFAULT_QUOTATIONS: Quotation[] = [];
 
 function loadLocalData(): LocalDataState {
   warnAboutFileStore();
@@ -621,6 +194,18 @@ export async function updateCustomer(id: string, updates: Partial<Customer>): Pr
   };
   saveLocalData(data);
   return data.customers[index];
+}
+
+export async function deleteCustomer(id: string): Promise<boolean> {
+  const data = loadLocalData();
+  if (data.invoices.some((invoice) => invoice.customer_id === id) || data.quotations.some((quotation) => quotation.customer_id === id)) {
+    throw new Error("Customer has invoices or quotations. Archive the customer instead to preserve transaction history.");
+  }
+  const count = data.customers.length;
+  data.customers = data.customers.filter((customer) => customer.id !== id);
+  if (data.customers.length === count) return false;
+  saveLocalData(data);
+  return true;
 }
 
 export async function getProductsServices(): Promise<ProductService[]> {
@@ -767,6 +352,25 @@ export async function updateInvoice(id: string, updates: Partial<Invoice>): Prom
 
   saveLocalData(data);
   return data.invoices[index];
+}
+
+export async function deleteInvoice(id: string): Promise<boolean> {
+  const data = loadLocalData();
+  const invoice = data.invoices.find((item) => item.id === id);
+  if (!invoice) return false;
+  if (invoice.status !== "draft" || invoice.is_locked || invoice.amount_paid > 0 || data.payments.some((payment) => payment.invoice_id === id)) {
+    throw new Error("Only unpaid draft invoices can be deleted. Cancel issued invoices to preserve their audit trail.");
+  }
+  data.invoices = data.invoices.filter((item) => item.id !== id);
+  if (invoice.quotation_id) {
+    const quotation = data.quotations.find((item) => item.id === invoice.quotation_id);
+    if (quotation?.converted_to_invoice_id === id) {
+      quotation.status = "accepted";
+      quotation.converted_to_invoice_id = undefined;
+    }
+  }
+  saveLocalData(data);
+  return true;
 }
 
 export async function cancelInvoice(id: string, reason: string): Promise<Invoice | null> {

@@ -29,7 +29,7 @@ interface InvoiceFormProps {
 export function InvoiceForm({ companySettings, customers, products }: InvoiceFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const preselectedCustId = searchParams.get("customerId") || (customers[0]?.id || "");
+  const preselectedCustId = searchParams.get("customerId") || "";
 
   const [invoiceType, setInvoiceType] = useState<DocumentType>(
     companySettings.is_gst_registered ? "gst_tax_invoice" : "non_gst_invoice"
@@ -45,33 +45,13 @@ export function InvoiceForm({ companySettings, customers, products }: InvoiceFor
   const [reverseCharge, setReverseCharge] = useState(false);
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
   const [discountValue, setDiscountValue] = useState(0);
-  const [notes, setNotes] = useState(companySettings.default_notes || "");
-  const [terms, setTerms] = useState(companySettings.terms_and_conditions || "");
+  const [notes, setNotes] = useState("");
+  const [terms, setTerms] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   // Line items state
-  const [items, setItems] = useState<InvoiceItem[]>([
-    {
-      id: "item-init",
-      item_description: products[0]?.name || "Software Consulting",
-      sac_hsn_code: products[0]?.sac_hsn_code || "998314",
-      quantity: 1,
-      unit: products[0]?.unit || "months",
-      unit_price: products[0]?.default_price || 50000,
-      discount_percent: 0,
-      taxable_amount: 50000,
-      gst_rate: invoiceType === "gst_tax_invoice" ? (products[0]?.gst_rate || 18) : 0,
-      cgst_rate: 0,
-      cgst_amount: 0,
-      sgst_rate: 0,
-      sgst_amount: 0,
-      igst_rate: 0,
-      igst_amount: 0,
-      total_amount: 50000,
-      sort_order: 1,
-    },
-  ]);
+  const [items, setItems] = useState<InvoiceItem[]>([]);
 
   // Sync place of supply when customer changes
   useEffect(() => {
@@ -126,7 +106,7 @@ export function InvoiceForm({ companySettings, customers, products }: InvoiceFor
       ...updated[index],
       product_id: prod.id,
       item_description: prod.name,
-      sac_hsn_code: prod.sac_hsn_code || "998314",
+      sac_hsn_code: prod.sac_hsn_code || "",
       unit: prod.unit,
       unit_price: prod.default_price,
       gst_rate: isGstApplicable ? prod.gst_rate : 0,
@@ -162,7 +142,7 @@ export function InvoiceForm({ companySettings, customers, products }: InvoiceFor
     const newItem: InvoiceItem = {
       id: `item-${Date.now()}`,
       item_description: "",
-      sac_hsn_code: "998314",
+      sac_hsn_code: "",
       quantity: 1,
       unit: "months",
       unit_price: 0,
