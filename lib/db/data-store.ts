@@ -14,6 +14,7 @@ import {
 } from "@/lib/types/database";
 import { calculateLineItemTax, calculateDocumentTotals } from "@/lib/financial/gst-calculator";
 import { numberToIndianWords } from "@/lib/financial/number-to-words";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getFinancialYear, generateNextDocumentNumber } from "@/lib/financial/invoice-numbering";
 import fs from "fs";
 import path from "path";
@@ -147,6 +148,27 @@ export async function updateCompanySettings(updates: Partial<CompanySettings>): 
 }
 
 export async function getCustomers(): Promise<Customer[]> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const [{ data: customers, error }, { data: invoices, error: invoiceError }] = await Promise.all([
+      supabase.from("customers").select("*").order("created_at", { ascending: false }),
+      supabase.from("invoices").select("customer_id,total_amount,amount_paid,balance_due,status"),
+    ]);
+    if (error) throw new Error(`Could not load customers from Supabase: ${error.message}`);
+    if (invoiceError) throw new Error(`Could not load customer invoice totals: ${invoiceError.message}`);
+    return (customers || []).map((customer) => {
+      const customerInvoices = (invoices || []).filter(
+        (invoice) => invoice.customer_id === customer.id && invoice.status !== "cancelled"
+      );
+      return {
+        ...customer,
+        total_sales: customerInvoices.reduce((sum, invoice) => sum + Number(invoice.total_amount || 0), 0),
+        total_paid: customerInvoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0),
+        outstanding_balance: customerInvoices.reduce((sum, invoice) => sum + Number(invoice.balance_due || 0), 0),
+        invoice_count: customerInvoices.length,
+      } as Customer;
+    });
+  }
   const data = loadLocalData();
   // Compute totals for each customer
   return data.customers.map((c) => {
@@ -165,11 +187,23 @@ export async function getCustomers(): Promise<Customer[]> {
 }
 
 export async function getCustomerById(id: string): Promise<Customer | null> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase.from("customers").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(`Could not load customer from Supabase: ${error.message}`);
+    return data as Customer | null;
+  }
   const customers = await getCustomers();
   return customers.find((c) => c.id === id) || null;
 }
 
 export async function createCustomer(customer: Omit<Customer, "id" | "created_at" | "updated_at">): Promise<Customer> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase.from("customers").insert(customer).select("*").single();
+    if (error) throw new Error(`Could not save customer to Supabase: ${error.message}`);
+    return data as Customer;
+  }
   const data = loadLocalData();
   const newCustomer: Customer = {
     ...customer,
@@ -184,6 +218,12 @@ export async function createCustomer(customer: Omit<Customer, "id" | "created_at
 }
 
 export async function updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer | null> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase.from("customers").update(updates).eq("id", id).select("*").maybeSingle();
+    if (error) throw new Error(`Could not update customer in Supabase: ${error.message}`);
+    return data as Customer | null;
+  }
   const data = loadLocalData();
   const index = data.customers.findIndex((c) => c.id === id);
   if (index === -1) return null;
@@ -197,6 +237,20 @@ export async function updateCustomer(id: string, updates: Partial<Customer>): Pr
 }
 
 export async function deleteCustomer(id: string): Promise<boolean> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const [{ count: invoiceCount, error: invoiceError }, { count: quoteCount, error: quoteError }] = await Promise.all([
+      supabase.from("invoices").select("id", { count: "exact", head: true }).eq("customer_id", id),
+      supabase.from("quotations").select("id", { count: "exact", head: true }).eq("customer_id", id),
+    ]);
+    if (invoiceError || quoteError) throw new Error(`Could not verify customer history in Supabase: ${invoiceError?.message || quoteError?.message}`);
+    if ((invoiceCount || 0) > 0 || (quoteCount || 0) > 0) {
+      throw new Error("Customer has invoices or quotations. Archive the customer instead to preserve transaction history.");
+    }
+    const { data, error } = await supabase.from("customers").delete().eq("id", id).select("id");
+    if (error) throw new Error(`Could not delete customer from Supabase: ${error.message}`);
+    return (data?.length || 0) > 0;
+  }
   const data = loadLocalData();
   if (data.invoices.some((invoice) => invoice.customer_id === id) || data.quotations.some((quotation) => quotation.customer_id === id)) {
     throw new Error("Customer has invoices or quotations. Archive the customer instead to preserve transaction history.");

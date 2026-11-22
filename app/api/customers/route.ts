@@ -5,8 +5,9 @@ export async function GET() {
   try {
     const customers = await getCustomers();
     return NextResponse.json(customers);
-  } catch (error: any) {
-    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Request could not be completed.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -17,8 +18,9 @@ export async function DELETE(req: NextRequest) {
     const success = await deleteCustomer(id);
     if (!success) return NextResponse.json({ error: "Customer not found." }, { status: 404 });
     return NextResponse.json({ success });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Request could not be completed." }, { status: 400 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Request could not be completed.";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
 
@@ -32,7 +34,8 @@ export async function POST(req: NextRequest) {
 
     const created = await createCustomer(body);
     return NextResponse.json(created, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Request could not be completed.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
