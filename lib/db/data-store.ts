@@ -5,12 +5,10 @@ import {
   Invoice,
   InvoiceItem,
   Quotation,
-  QuotationItem,
   Payment,
   Expense,
   CreditNote,
   AuditLog,
-  InvoiceStatus,
 } from "@/lib/types/database";
 import { calculateLineItemTax, calculateDocumentTotals } from "@/lib/financial/gst-calculator";
 import { numberToIndianWords } from "@/lib/financial/number-to-words";
@@ -215,9 +213,8 @@ export async function getCustomers(): Promise<Customer[]> {
 export async function getCustomerById(id: string): Promise<Customer | null> {
   const supabase = createSupabaseAdminClient();
   if (supabase) {
-    const { data, error } = await supabase.from("customers").select("*").eq("id", id).maybeSingle();
-    if (error) throw new Error(`Could not load customer from Supabase: ${error.message}`);
-    return data as Customer | null;
+    const customers = await getCustomers();
+    return customers.find((customer) => customer.id === id) || null;
   }
   const customers = await getCustomers();
   return customers.find((c) => c.id === id) || null;
@@ -486,6 +483,24 @@ export async function createInvoice(invoiceData: Partial<Invoice>): Promise<Invo
 }
 
 export async function updateInvoice(id: string, updates: Partial<Invoice>): Promise<Invoice | null> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const existing = await getInvoiceById(id);
+    if (!existing) return null;
+    if (existing.is_locked && updates.status !== "cancelled" && updates.status !== "paid" && updates.status !== "partially_paid") {
+      throw new Error("Cannot edit locked or issued invoice. Issue a credit note or cancel with audit trail.");
+    }
+    const updatesWithWords = {
+      ...updates,
+      ...(updates.total_amount !== undefined ? { amount_in_words: numberToIndianWords(updates.total_amount) } : {}),
+      updated_at: new Date().toISOString(),
+    };
+    delete (updatesWithWords as Partial<Invoice>).items;
+    delete (updatesWithWords as Partial<Invoice>).customer;
+    const { data, error } = await supabase.from("invoices").update(updatesWithWords).eq("id", id).select("*").maybeSingle();
+    if (error) throw new Error(`Could not update invoice in Supabase: ${error.message}`);
+    return data ? ({ ...existing, ...data } as Invoice) : null;
+  }
   const data = loadLocalData();
   const index = data.invoices.findIndex((inv) => inv.id === id);
   if (index === -1) return null;
@@ -507,6 +522,24 @@ export async function updateInvoice(id: string, updates: Partial<Invoice>): Prom
 }
 
 export async function deleteInvoice(id: string): Promise<boolean> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data: invoice, error: invoiceError } = await supabase.from("invoices").select("*").eq("id", id).maybeSingle();
+    if (invoiceError) throw new Error(`Could not load invoice from Supabase: ${invoiceError.message}`);
+    if (!invoice) return false;
+    const { count: paymentCount, error: paymentError } = await supabase
+      .from("payments").select("id", { count: "exact", head: true }).eq("invoice_id", id);
+    if (paymentError) throw new Error(`Could not verify invoice payments in Supabase: ${paymentError.message}`);
+    if (invoice.status !== "draft" || invoice.is_locked || Number(invoice.amount_paid) > 0 || (paymentCount || 0) > 0) {
+      throw new Error("Only unpaid draft invoices can be deleted. Cancel issued invoices to preserve their audit trail.");
+    }
+    const { error } = await supabase.from("invoices").delete().eq("id", id);
+    if (error) throw new Error(`Could not delete invoice from Supabase: ${error.message}`);
+    if (invoice.quotation_id) {
+      await supabase.from("quotations").update({ status: "accepted", converted_to_invoice_id: null }).eq("id", invoice.quotation_id).eq("converted_to_invoice_id", id);
+    }
+    return true;
+  }
   const data = loadLocalData();
   const invoice = data.invoices.find((item) => item.id === id);
   if (!invoice) return false;
@@ -526,6 +559,37 @@ export async function deleteInvoice(id: string): Promise<boolean> {
 }
 
 export async function cancelInvoice(id: string, reason: string): Promise<Invoice | null> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const cancelledAt = new Date().toISOString();
+    const { data: invoice, error } = await supabase
+      .from("invoices")
+      .update({
+        status: "cancelled",
+        cancelled_at: cancelledAt,
+        cancellation_reason: reason,
+        balance_due: 0,
+        updated_at: cancelledAt,
+      })
+      .eq("id", id)
+      .select("*")
+      .maybeSingle();
+    if (error) throw new Error(`Could not cancel invoice in Supabase: ${error.message}`);
+    if (!invoice) return null;
+
+    const { error: auditError } = await supabase.from("audit_logs").insert({
+      entity_type: "invoice",
+      entity_id: id,
+      action: "cancel",
+      new_data: { reason },
+      performed_by: "Owner",
+    });
+    if (auditError) {
+      throw new Error(`Invoice was cancelled, but its audit log could not be saved: ${auditError.message}`);
+    }
+    return invoice as Invoice;
+  }
+
   const data = loadLocalData();
   const invoice = data.invoices.find((i) => i.id === id);
   if (!invoice) return null;
@@ -590,6 +654,72 @@ export async function recordPayment(paymentData: {
   transaction_reference?: string;
   notes?: string;
 }): Promise<Payment> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data: invoice, error: invoiceError } = await supabase.from("invoices").select("*").eq("id", paymentData.invoice_id).maybeSingle();
+    if (invoiceError) throw new Error(`Could not load invoice from Supabase: ${invoiceError.message}`);
+    if (!invoice) throw new Error("Invoice not found.");
+
+    const payAmt = Number(paymentData.amount);
+    const balanceDue = Number(invoice.balance_due);
+    if (payAmt <= 0) throw new Error("Payment amount must be greater than zero.");
+    if (payAmt > balanceDue) {
+      throw new Error(`Payment amount (₹${payAmt}) cannot exceed invoice balance due (₹${balanceDue}).`);
+    }
+
+    const fy = getFinancialYear();
+    const { count, error: countError } = await supabase.from("payments").select("id", { count: "exact", head: true });
+    if (countError) throw new Error(`Could not number payment in Supabase: ${countError.message}`);
+    const now = new Date().toISOString();
+    const paymentRecord = {
+      payment_number: `REC/${fy.short}/${String((count || 0) + 1).padStart(3, "0")}`,
+      invoice_id: invoice.id,
+      customer_id: invoice.customer_id,
+      amount: payAmt,
+      payment_date: paymentData.payment_date,
+      payment_method: paymentData.payment_method,
+      transaction_reference: paymentData.transaction_reference,
+      notes: paymentData.notes,
+      is_reversed: false,
+      created_at: now,
+      updated_at: now,
+    };
+    const { data: payment, error: insertError } = await supabase.from("payments").insert(paymentRecord).select("*").single();
+    if (insertError) throw new Error(`Could not save payment to Supabase: ${insertError.message}`);
+
+    const amountPaid = Number((Number(invoice.amount_paid) + payAmt).toFixed(2));
+    const newBalance = Number((Number(invoice.total_amount) - amountPaid).toFixed(2));
+    const status = newBalance <= 0.01 ? "paid" : "partially_paid";
+    const { error: updateError } = await supabase.from("invoices").update({
+      amount_paid: amountPaid,
+      balance_due: status === "paid" ? 0 : newBalance,
+      status,
+      updated_at: now,
+    }).eq("id", invoice.id);
+    if (updateError) {
+      await supabase.from("payments").delete().eq("id", payment.id);
+      throw new Error(`Could not update invoice balance in Supabase: ${updateError.message}`);
+    }
+
+    const { error: auditError } = await supabase.from("audit_logs").insert({
+      entity_type: "payment",
+      entity_id: payment.id,
+      action: "create",
+      new_data: { payment_number: payment.payment_number, amount: payAmt, invoice_number: invoice.invoice_number },
+      performed_by: "Owner",
+    });
+    if (auditError) {
+      await supabase.from("invoices").update({
+        amount_paid: invoice.amount_paid,
+        balance_due: invoice.balance_due,
+        status: invoice.status,
+      }).eq("id", invoice.id);
+      await supabase.from("payments").delete().eq("id", payment.id);
+      throw new Error(`Could not save payment audit log in Supabase: ${auditError.message}`);
+    }
+    return payment as Payment;
+  }
+
   const data = loadLocalData();
   const invoice = data.invoices.find((i) => i.id === paymentData.invoice_id);
   if (!invoice) throw new Error("Invoice not found.");
@@ -648,6 +778,52 @@ export async function recordPayment(paymentData: {
 }
 
 export async function reversePayment(paymentId: string, reason: string): Promise<Payment | null> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data: payment, error: paymentError } = await supabase.from("payments").select("*").eq("id", paymentId).maybeSingle();
+    if (paymentError) throw new Error(`Could not load payment from Supabase: ${paymentError.message}`);
+    if (!payment) return null;
+    if (payment.is_reversed) throw new Error("Payment has already been reversed.");
+
+    const { data: invoice, error: invoiceError } = await supabase.from("invoices").select("*").eq("id", payment.invoice_id).maybeSingle();
+    if (invoiceError) throw new Error(`Could not load linked invoice from Supabase: ${invoiceError.message}`);
+    if (!invoice) throw new Error("Linked invoice not found.");
+
+    const now = new Date().toISOString();
+    const amountPaid = Math.max(0, Number((Number(invoice.amount_paid) - Number(payment.amount)).toFixed(2)));
+    const balanceDue = Number((Number(invoice.total_amount) - amountPaid).toFixed(2));
+    const invoiceStatus = amountPaid === 0 ? "issued" : "partially_paid";
+    const { data: reversed, error: reverseError } = await supabase.from("payments").update({
+      is_reversed: true,
+      reversed_at: now,
+      reversal_reason: reason,
+      updated_at: now,
+    }).eq("id", paymentId).eq("is_reversed", false).select("*").maybeSingle();
+    if (reverseError) throw new Error(`Could not reverse payment in Supabase: ${reverseError.message}`);
+    if (!reversed) throw new Error("Payment has already been reversed.");
+
+    const { error: updateError } = await supabase.from("invoices").update({
+      amount_paid: amountPaid,
+      balance_due: balanceDue,
+      status: invoiceStatus,
+      updated_at: now,
+    }).eq("id", invoice.id);
+    if (updateError) {
+      await supabase.from("payments").update({ is_reversed: false, reversed_at: null, reversal_reason: null }).eq("id", paymentId);
+      throw new Error(`Could not restore invoice balance in Supabase: ${updateError.message}`);
+    }
+
+    const { error: auditError } = await supabase.from("audit_logs").insert({
+      entity_type: "payment",
+      entity_id: payment.id,
+      action: "payment_reversed",
+      new_data: { reason, amount: payment.amount, invoice_number: invoice.invoice_number },
+      performed_by: "Owner",
+    });
+    if (auditError) throw new Error(`Payment was reversed, but its audit log could not be saved: ${auditError.message}`);
+    return reversed as Payment;
+  }
+
   const data = loadLocalData();
   const payment = data.payments.find((p) => p.id === paymentId);
   if (!payment) return null;
@@ -686,6 +862,24 @@ export async function reversePayment(paymentId: string, reason: string): Promise
 }
 
 export async function getQuotations(): Promise<Quotation[]> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data: quotations, error } = await supabase.from("quotations").select("*").order("created_at", { ascending: false });
+    if (error) throw new Error(`Could not load quotations from Supabase: ${error.message}`);
+    const ids = (quotations || []).map((quotation) => quotation.id);
+    const customerIds = [...new Set((quotations || []).map((quotation) => quotation.customer_id))];
+    const [{ data: items, error: itemsError }, { data: customers, error: customersError }] = await Promise.all([
+      ids.length ? supabase.from("quotation_items").select("*").in("quotation_id", ids).order("sort_order") : Promise.resolve({ data: [], error: null }),
+      customerIds.length ? supabase.from("customers").select("*").in("id", customerIds) : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (itemsError) throw new Error(`Could not load quotation items from Supabase: ${itemsError.message}`);
+    if (customersError) throw new Error(`Could not load quotation customers from Supabase: ${customersError.message}`);
+    return (quotations || []).map((quotation) => ({
+      ...quotation,
+      items: (items || []).filter((item) => item.quotation_id === quotation.id),
+      customer: (customers || []).find((customer) => customer.id === quotation.customer_id),
+    })) as Quotation[];
+  }
   const data = loadLocalData();
   return data.quotations.map((q) => {
     const customer = data.customers.find((c) => c.id === q.customer_id);
@@ -702,13 +896,27 @@ export async function getQuotationById(id: string): Promise<Quotation | null> {
 }
 
 export async function createQuotation(quotationData: Partial<Quotation>): Promise<Quotation> {
-  const data = loadLocalData();
+  const supabase = createSupabaseAdminClient();
+  const data = supabase ? null : loadLocalData();
   const fy = getFinancialYear();
-  const settings = data.companySettings;
+  const settings = supabase ? await getCompanySettings() : data!.companySettings;
 
-  const nextSeq = data.quotations.length + 1;
+  let nextSeq: number;
+  let customer: Partial<Customer>;
+  if (supabase) {
+    const [{ count, error: countError }, { data: customerRow, error: customerError }] = await Promise.all([
+      supabase.from("quotations").select("id", { count: "exact", head: true }),
+      supabase.from("customers").select("*").eq("id", quotationData.customer_id).single(),
+    ]);
+    if (countError) throw new Error(`Could not number quotation in Supabase: ${countError.message}`);
+    if (customerError) throw new Error(`Could not load selected customer from Supabase: ${customerError.message}`);
+    nextSeq = (count || 0) + 1;
+    customer = customerRow as Customer;
+  } else {
+    nextSeq = data!.quotations.length + 1;
+    customer = data!.customers.find((c) => c.id === quotationData.customer_id) || {};
+  }
   const quoteNumber = generateNextDocumentNumber(settings.quotation_prefix, nextSeq, fy);
-  const customer = data.customers.find((c) => c.id === quotationData.customer_id) || {};
 
   const newQuote: Quotation = {
     id: `quot-${Date.now()}`,
@@ -744,12 +952,68 @@ export async function createQuotation(quotationData: Partial<Quotation>): Promis
     items: quotationData.items || [],
   };
 
-  data.quotations.unshift(newQuote);
-  saveLocalData(data);
+  if (supabase) {
+    const items = newQuote.items || [];
+    const quoteRecord = Object.fromEntries(Object.entries(newQuote).filter(([key]) => key !== "id" && key !== "items"));
+    const { data: savedQuotation, error } = await supabase.from("quotations").insert(quoteRecord).select("*").single();
+    if (error) throw new Error(`Could not save quotation to Supabase: ${error.message}`);
+    const itemRecords = items.map((item) => ({
+      ...Object.fromEntries(Object.entries(item).filter(([key]) => key !== "id" && key !== "quotation_id" && key !== "total_tax")),
+      quotation_id: savedQuotation.id,
+    }));
+    if (itemRecords.length) {
+      const { data: savedItems, error: itemsError } = await supabase.from("quotation_items").insert(itemRecords).select("*");
+      if (itemsError) {
+        await supabase.from("quotations").delete().eq("id", savedQuotation.id);
+        throw new Error(`Could not save quotation line items to Supabase: ${itemsError.message}`);
+      }
+      savedQuotation.items = savedItems || [];
+    } else {
+      savedQuotation.items = [];
+    }
+    return savedQuotation as Quotation;
+  }
+  data!.quotations.unshift(newQuote);
+  saveLocalData(data!);
   return newQuote;
 }
 
 export async function convertQuotationToInvoice(quotationId: string): Promise<Invoice> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const quote = await getQuotationById(quotationId);
+    if (!quote) throw new Error("Quotation not found.");
+    if (quote.status === "converted") throw new Error("Quotation has already been converted.");
+    const fy = getFinancialYear();
+    const docType: Invoice["invoice_type"] = quote.quotation_type === "non_gst" ? "non_gst_invoice" : "gst_tax_invoice";
+    const today = new Date().toISOString().split("T")[0];
+    const invoice = await createInvoice({
+      invoice_type: docType,
+      quotation_id: quote.id,
+      customer_id: quote.customer_id,
+      invoice_date: today,
+      due_date: new Date(Date.now() + 15 * 86400000).toISOString().split("T")[0],
+      status: "issued",
+      is_locked: true,
+      place_of_supply: quote.place_of_supply,
+      place_of_supply_state_code: quote.place_of_supply_state_code,
+      is_interstate: quote.is_interstate,
+      reverse_charge: false,
+      currency: quote.currency,
+      discount_type: quote.discount_type,
+      discount_value: quote.discount_value,
+      notes: quote.notes,
+      terms_and_conditions: quote.terms_and_conditions,
+      items: quote.items || [],
+    });
+    const { error } = await supabase.from("quotations").update({
+      status: "converted",
+      converted_to_invoice_id: invoice.id,
+      updated_at: new Date().toISOString(),
+    }).eq("id", quote.id);
+    if (error) throw new Error(`Invoice was created, but quotation status could not be updated: ${error.message}`);
+    return { ...invoice, financial_year: invoice.financial_year || fy.full };
+  }
   const data = loadLocalData();
   const quote = data.quotations.find((q) => q.id === quotationId);
   if (!quote) throw new Error("Quotation not found.");
@@ -837,14 +1101,27 @@ export async function convertQuotationToInvoice(quotationId: string): Promise<In
 }
 
 export async function getExpenses(): Promise<Expense[]> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase.from("expenses").select("*").order("expense_date", { ascending: false });
+    if (error) throw new Error(`Could not load expenses from Supabase: ${error.message}`);
+    return (data || []) as Expense[];
+  }
   const data = loadLocalData();
   return data.expenses;
 }
 
 export async function createExpense(expenseData: Omit<Expense, "id" | "expense_number" | "created_at" | "updated_at">): Promise<Expense> {
-  const data = loadLocalData();
+  const supabase = createSupabaseAdminClient();
   const fy = getFinancialYear();
-  const seq = data.expenses.length + 1;
+  let seq: number;
+  if (supabase) {
+    const { count, error } = await supabase.from("expenses").select("id", { count: "exact", head: true });
+    if (error) throw new Error(`Could not number expense in Supabase: ${error.message}`);
+    seq = (count || 0) + 1;
+  } else {
+    seq = loadLocalData().expenses.length + 1;
+  }
   const expenseNumber = `EXP/${fy.short}/${String(seq).padStart(3, "0")}`;
 
   const newExpense: Expense = {
@@ -855,12 +1132,25 @@ export async function createExpense(expenseData: Omit<Expense, "id" | "expense_n
     updated_at: new Date().toISOString(),
   };
 
+  if (supabase) {
+    const record = Object.fromEntries(Object.entries(newExpense).filter(([key]) => key !== "id"));
+    const { data, error } = await supabase.from("expenses").insert(record).select("*").single();
+    if (error) throw new Error(`Could not save expense to Supabase: ${error.message}`);
+    return data as Expense;
+  }
+  const data = loadLocalData();
   data.expenses.unshift(newExpense);
   saveLocalData(data);
   return newExpense;
 }
 
 export async function deleteExpense(id: string): Promise<boolean> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase.from("expenses").delete().eq("id", id).select("id");
+    if (error) throw new Error(`Could not delete expense from Supabase: ${error.message}`);
+    return (data || []).length > 0;
+  }
   const data = loadLocalData();
   const idx = data.expenses.findIndex((e) => e.id === id);
   if (idx === -1) return false;
@@ -870,11 +1160,59 @@ export async function deleteExpense(id: string): Promise<boolean> {
 }
 
 export async function getAuditLogs(): Promise<AuditLog[]> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase.from("audit_logs").select("*").order("created_at", { ascending: false });
+    if (error) throw new Error(`Could not load audit logs from Supabase: ${error.message}`);
+    return (data || []) as AuditLog[];
+  }
   const data = loadLocalData();
   return data.auditLogs;
 }
 
 export async function getFullBackupDump() {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const [company, customers, products, quotations, quotationItems, invoices, invoiceItems, payments, creditNotes, expenses, auditLogs] = await Promise.all([
+      supabase.from("company_settings").select("*").order("updated_at", { ascending: false }).limit(1),
+      supabase.from("customers").select("*").order("created_at", { ascending: false }),
+      supabase.from("products_services").select("*").order("created_at", { ascending: false }),
+      supabase.from("quotations").select("*").order("created_at", { ascending: false }),
+      supabase.from("quotation_items").select("*").order("sort_order"),
+      supabase.from("invoices").select("*").order("created_at", { ascending: false }),
+      supabase.from("invoice_items").select("*").order("sort_order"),
+      supabase.from("payments").select("*").order("created_at", { ascending: false }),
+      supabase.from("credit_notes").select("*").order("created_at", { ascending: false }),
+      supabase.from("expenses").select("*").order("created_at", { ascending: false }),
+      supabase.from("audit_logs").select("*").order("created_at", { ascending: false }),
+    ]);
+    const results = [company, customers, products, quotations, quotationItems, invoices, invoiceItems, payments, creditNotes, expenses, auditLogs];
+    const failed = results.find((result) => result.error);
+    if (failed?.error) throw new Error(`Could not export backup from Supabase: ${failed.error.message}`);
+    const quotationRows = quotations.data || [];
+    const invoiceRows = invoices.data || [];
+    return {
+      exported_at: new Date().toISOString(),
+      organization: "QORVA LABS LLP",
+      data: {
+        companySettings: company.data?.[0] || DEFAULT_COMPANY_SETTINGS,
+        customers: customers.data || [],
+        productsServices: products.data || [],
+        quotations: quotationRows.map((quotation) => ({
+          ...quotation,
+          items: (quotationItems.data || []).filter((item) => item.quotation_id === quotation.id),
+        })),
+        invoices: invoiceRows.map((invoice) => ({
+          ...invoice,
+          items: (invoiceItems.data || []).filter((item) => item.invoice_id === invoice.id),
+        })),
+        payments: payments.data || [],
+        creditNotes: creditNotes.data || [],
+        expenses: expenses.data || [],
+        auditLogs: auditLogs.data || [],
+      },
+    };
+  }
   const data = loadLocalData();
   return {
     exported_at: new Date().toISOString(),

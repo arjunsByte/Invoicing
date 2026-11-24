@@ -3,6 +3,18 @@ import autoTable from "jspdf-autotable";
 import { Invoice, Quotation } from "@/lib/types/database";
 import { formatINR } from "@/lib/financial/number-to-words";
 
+// jsPDF's built-in Helvetica font does not contain the Indian rupee glyph.
+// Use an ASCII currency label so amounts render consistently in every viewer.
+const formatPdfCurrency = (amount: number) => formatINR(amount, "Rs.");
+
+function formatQuantity(quantity: number, unit?: string) {
+  const normalizedUnit = unit?.trim() || "";
+  const displayUnit = quantity === 1 && normalizedUnit.endsWith("s")
+    ? normalizedUnit.slice(0, -1)
+    : normalizedUnit;
+  return `${quantity} ${displayUnit}`.trim();
+}
+
 export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: boolean = false) {
   const doc = new jsPDF({
     orientation: "landscape",
@@ -19,11 +31,6 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
   const isGst = isQuotation 
     ? (docData as Quotation).quotation_type === "gst" 
     : (docData as Invoice).invoice_type === "gst_tax_invoice";
-
-  // Colors
-  const primaryColor = [15, 23, 42]; // #0f172a (Deep Slate)
-  const secondaryColor = [71, 85, 105]; // #475569
-  const accentColor = [30, 41, 59];
 
   // Document Title Header
   let title = "TAX INVOICE";
@@ -182,12 +189,12 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
         idx + 1,
         item.item_description,
         item.sac_hsn_code || "",
-        `${item.quantity} ${item.unit || ""}`,
-        formatINR(item.unit_price, "₹"),
-        formatINR(item.taxable_amount, "₹"),
+        formatQuantity(item.quantity, item.unit),
+        formatPdfCurrency(item.unit_price),
+        formatPdfCurrency(item.taxable_amount),
         `${item.igst_rate}%`,
-        formatINR(item.igst_amount, "₹"),
-        formatINR(item.total_amount, "₹"),
+        formatPdfCurrency(item.igst_amount),
+        formatPdfCurrency(item.total_amount),
       ]);
     } else {
       tableHeaders = ["#", "Item & Description", "HSN/SAC", "Qty", "Rate", "Taxable", "CGST", "SGST", "Total"];
@@ -195,12 +202,12 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
         idx + 1,
         item.item_description,
         item.sac_hsn_code || "",
-        `${item.quantity} ${item.unit || ""}`,
-        formatINR(item.unit_price, "₹"),
-        formatINR(item.taxable_amount, "₹"),
-        `${item.cgst_rate}% (${formatINR(item.cgst_amount, "₹")})`,
-        `${item.sgst_rate}% (${formatINR(item.sgst_amount, "₹")})`,
-        formatINR(item.total_amount, "₹"),
+        formatQuantity(item.quantity, item.unit),
+        formatPdfCurrency(item.unit_price),
+        formatPdfCurrency(item.taxable_amount),
+        `${item.cgst_rate}% (${formatPdfCurrency(item.cgst_amount)})`,
+        `${item.sgst_rate}% (${formatPdfCurrency(item.sgst_amount)})`,
+        formatPdfCurrency(item.total_amount),
       ]);
     }
   } else {
@@ -208,10 +215,10 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
     tableRows = items.map((item, idx) => [
       idx + 1,
       item.item_description,
-      `${item.quantity} ${item.unit || ""}`,
-      formatINR(item.unit_price, "₹"),
+      formatQuantity(item.quantity, item.unit),
+      formatPdfCurrency(item.unit_price),
       `${item.discount_percent || 0}%`,
-      formatINR(item.total_amount, "₹"),
+      formatPdfCurrency(item.total_amount),
     ]);
   }
 
@@ -293,34 +300,34 @@ export function generateInvoicePDF(docData: Invoice | Quotation, isQuotation: bo
     tY += 4.5;
   };
 
-  printRow("Subtotal:", formatINR(docData.subtotal, "₹"));
+  printRow("Subtotal:", formatPdfCurrency(docData.subtotal));
   if (docData.discount_amount > 0) {
-    printRow("Discount:", `-${formatINR(docData.discount_amount, "₹")}`);
+    printRow("Discount:", `-${formatPdfCurrency(docData.discount_amount)}`);
   }
-  printRow("Taxable Amount:", formatINR(docData.taxable_amount, "₹"));
+  printRow("Taxable Amount:", formatPdfCurrency(docData.taxable_amount));
 
   if (isGst) {
     if (docData.is_interstate) {
-      printRow("IGST Total:", formatINR(docData.igst_amount, "₹"));
+      printRow("IGST Total:", formatPdfCurrency(docData.igst_amount));
     } else {
-      printRow("CGST Total:", formatINR(docData.cgst_amount, "₹"));
-      printRow("SGST Total:", formatINR(docData.sgst_amount, "₹"));
+      printRow("CGST Total:", formatPdfCurrency(docData.cgst_amount));
+      printRow("SGST Total:", formatPdfCurrency(docData.sgst_amount));
     }
   }
 
   if (docData.round_off !== 0) {
-    printRow("Round Off:", formatINR(docData.round_off, "₹"));
+    printRow("Round Off:", formatPdfCurrency(docData.round_off));
   }
 
   doc.setDrawColor(203, 213, 225);
   doc.line(totalsX + 2, tY - 1, totalsX + 73, tY - 1);
   tY += 2;
-  printRow("Total Amount:", formatINR(docData.total_amount, "₹"), true);
+  printRow("Total Amount:", formatPdfCurrency(docData.total_amount), true);
 
   if (!isQuotation) {
     const inv = docData as Invoice;
-    printRow("Amount Paid:", formatINR(inv.amount_paid, "₹"));
-    printRow("Balance Due:", formatINR(inv.balance_due, "₹"), true);
+    printRow("Amount Paid:", formatPdfCurrency(inv.amount_paid));
+    printRow("Balance Due:", formatPdfCurrency(inv.balance_due), true);
   }
 
   // Footer / Signatory

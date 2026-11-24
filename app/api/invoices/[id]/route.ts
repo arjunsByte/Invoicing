@@ -12,7 +12,8 @@ export async function GET(
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
     }
     return NextResponse.json(invoice);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    console.error("Invoice load failed", error);
     return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
   }
 }
@@ -40,8 +41,10 @@ export async function PUT(
     }
     const updated = await updateInvoice(id, allowedUpdates);
     return NextResponse.json(updated);
-  } catch (error: any) {
-    return NextResponse.json({ error: "Request could not be completed." }, { status: 400 });
+  } catch (error: unknown) {
+    console.error("Invoice update or cancellation failed", error);
+    const message = error instanceof Error ? error.message : "Request could not be completed.";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
 
