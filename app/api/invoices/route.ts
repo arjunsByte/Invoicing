@@ -5,8 +5,10 @@ export async function GET() {
   try {
     const invoices = await getInvoices();
     return NextResponse.json(invoices);
-  } catch (error: any) {
-    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("Invoice list failed", error);
+    const message = error instanceof Error ? error.message : "Request could not be completed.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -52,7 +54,9 @@ export async function POST(req: NextRequest) {
       items: body.items,
     });
     return NextResponse.json(created, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: "Request could not be completed." }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("Invoice creation failed", error);
+    const message = error instanceof Error ? error.message : "Request could not be completed.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

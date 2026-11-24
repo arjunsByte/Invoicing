@@ -132,11 +132,37 @@ function saveLocalData(data: LocalDataState) {
 // ==============================================================================
 
 export async function getCompanySettings(): Promise<CompanySettings> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("company_settings")
+      .select("*")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(`Could not load company settings from Supabase: ${error.message}`);
+    return (data as CompanySettings | null) || DEFAULT_COMPANY_SETTINGS;
+  }
   const data = loadLocalData();
   return data.companySettings;
 }
 
 export async function updateCompanySettings(updates: Partial<CompanySettings>): Promise<CompanySettings> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data: existing, error: readError } = await supabase
+      .from("company_settings")
+      .select("id")
+      .limit(1)
+      .maybeSingle();
+    if (readError) throw new Error(`Could not load company settings from Supabase: ${readError.message}`);
+    const query = existing
+      ? supabase.from("company_settings").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", existing.id)
+      : supabase.from("company_settings").insert({ ...DEFAULT_COMPANY_SETTINGS, ...updates });
+    const { data, error } = await query.select("*").single();
+    if (error) throw new Error(`Could not save company settings to Supabase: ${error.message}`);
+    return data as CompanySettings;
+  }
   const data = loadLocalData();
   data.companySettings = {
     ...data.companySettings,
@@ -263,6 +289,12 @@ export async function deleteCustomer(id: string): Promise<boolean> {
 }
 
 export async function getProductsServices(): Promise<ProductService[]> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase.from("products_services").select("*").order("created_at", { ascending: false });
+    if (error) throw new Error(`Could not load products from Supabase: ${error.message}`);
+    return (data || []) as ProductService[];
+  }
   const data = loadLocalData();
   return data.productsServices;
 }
@@ -270,6 +302,12 @@ export async function getProductsServices(): Promise<ProductService[]> {
 export async function createProductService(
   item: Omit<ProductService, "id" | "created_at" | "updated_at">
 ): Promise<ProductService> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase.from("products_services").insert(item).select("*").single();
+    if (error) throw new Error(`Could not save product to Supabase: ${error.message}`);
+    return data as ProductService;
+  }
   const data = loadLocalData();
   const newProduct: ProductService = {
     ...item,
@@ -283,6 +321,12 @@ export async function createProductService(
 }
 
 export async function updateProductService(id: string, updates: Partial<ProductService>): Promise<ProductService | null> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data, error } = await supabase.from("products_services").update(updates).eq("id", id).select("*").maybeSingle();
+    if (error) throw new Error(`Could not update product in Supabase: ${error.message}`);
+    return data as ProductService | null;
+  }
   const data = loadLocalData();
   const index = data.productsServices.findIndex((p) => p.id === id);
   if (index === -1) return null;
@@ -296,6 +340,24 @@ export async function updateProductService(id: string, updates: Partial<ProductS
 }
 
 export async function getInvoices(): Promise<Invoice[]> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data: invoices, error } = await supabase.from("invoices").select("*").order("created_at", { ascending: false });
+    if (error) throw new Error(`Could not load invoices from Supabase: ${error.message}`);
+    const ids = (invoices || []).map((invoice) => invoice.id);
+    const customerIds = [...new Set((invoices || []).map((invoice) => invoice.customer_id))];
+    const [{ data: items, error: itemsError }, { data: customers, error: customersError }] = await Promise.all([
+      ids.length ? supabase.from("invoice_items").select("*").in("invoice_id", ids).order("sort_order") : Promise.resolve({ data: [], error: null }),
+      customerIds.length ? supabase.from("customers").select("*").in("id", customerIds) : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (itemsError) throw new Error(`Could not load invoice items from Supabase: ${itemsError.message}`);
+    if (customersError) throw new Error(`Could not load invoice customers from Supabase: ${customersError.message}`);
+    return (invoices || []).map((invoice) => ({
+      ...invoice,
+      items: (items || []).filter((item) => item.invoice_id === invoice.id),
+      customer: (customers || []).find((customer) => customer.id === invoice.customer_id),
+    })) as Invoice[];
+  }
   const data = loadLocalData();
   return data.invoices.map((inv) => {
     const customer = data.customers.find((c) => c.id === inv.customer_id);
@@ -312,9 +374,10 @@ export async function getInvoiceById(id: string): Promise<Invoice | null> {
 }
 
 export async function createInvoice(invoiceData: Partial<Invoice>): Promise<Invoice> {
-  const data = loadLocalData();
+  const supabase = createSupabaseAdminClient();
+  const data = supabase ? null : loadLocalData();
   const fy = getFinancialYear();
-  const settings = data.companySettings;
+  const settings = supabase ? await getCompanySettings() : data!.companySettings;
 
   // Prefix selection
   let prefix = settings.gst_invoice_prefix;
@@ -324,10 +387,22 @@ export async function createInvoice(invoiceData: Partial<Invoice>): Promise<Invo
     prefix = settings.bill_of_supply_prefix;
   }
 
-  const existingSameType = data.invoices.filter((i) => i.invoice_type === invoiceData.invoice_type);
-  const nextNumber = generateNextDocumentNumber(prefix, existingSameType.length + 1, fy);
-
-  const customer = data.customers.find((c) => c.id === invoiceData.customer_id) || {};
+  let sameTypeCount: number;
+  let customer: Partial<Customer>;
+  if (supabase) {
+    const [{ count, error: countError }, { data: customerRow, error: customerError }] = await Promise.all([
+      supabase.from("invoices").select("id", { count: "exact", head: true }).eq("invoice_type", invoiceData.invoice_type),
+      supabase.from("customers").select("*").eq("id", invoiceData.customer_id).single(),
+    ]);
+    if (countError) throw new Error(`Could not number invoice from Supabase: ${countError.message}`);
+    if (customerError) throw new Error(`Could not load selected customer from Supabase: ${customerError.message}`);
+    sameTypeCount = count || 0;
+    customer = customerRow as Customer;
+  } else {
+    sameTypeCount = data!.invoices.filter((i) => i.invoice_type === invoiceData.invoice_type).length;
+    customer = data!.customers.find((c) => c.id === invoiceData.customer_id) || {};
+  }
+  const nextNumber = generateNextDocumentNumber(prefix, sameTypeCount + 1, fy);
 
   const normalizedItems: InvoiceItem[] = (invoiceData.items || []).map((item, index) => {
     const tax = calculateLineItemTax(item, invoiceData.is_interstate === true, invoiceData.invoice_type !== "non_gst_invoice");
@@ -382,8 +457,31 @@ export async function createInvoice(invoiceData: Partial<Invoice>): Promise<Invo
     items: normalizedItems,
   };
 
-  data.invoices.unshift(newInvoice);
-  saveLocalData(data);
+  if (supabase) {
+    const items = newInvoice.items || [];
+    const invoiceRecord = Object.fromEntries(
+      Object.entries(newInvoice).filter(([key]) => key !== "id" && key !== "items")
+    );
+    const { data: savedInvoice, error: invoiceError } = await supabase.from("invoices").insert(invoiceRecord).select("*").single();
+    if (invoiceError) throw new Error(`Could not save invoice to Supabase: ${invoiceError.message}`);
+    const itemRecords = items.map((item) => ({
+      ...Object.fromEntries(Object.entries(item).filter(([key]) => key !== "id" && key !== "total_tax")),
+      invoice_id: savedInvoice.id,
+    }));
+    if (itemRecords.length) {
+      const { data: savedItems, error: itemsError } = await supabase.from("invoice_items").insert(itemRecords).select("*");
+      if (itemsError) {
+        await supabase.from("invoices").delete().eq("id", savedInvoice.id);
+        throw new Error(`Could not save invoice line items to Supabase: ${itemsError.message}`);
+      }
+      savedInvoice.items = savedItems || [];
+    } else {
+      savedInvoice.items = [];
+    }
+    return savedInvoice as Invoice;
+  }
+  data!.invoices.unshift(newInvoice);
+  saveLocalData(data!);
   return newInvoice;
 }
 
@@ -454,6 +552,24 @@ export async function cancelInvoice(id: string, reason: string): Promise<Invoice
 }
 
 export async function getPayments(): Promise<Payment[]> {
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    const { data: payments, error } = await supabase.from("payments").select("*").order("created_at", { ascending: false });
+    if (error) throw new Error(`Could not load payments from Supabase: ${error.message}`);
+    const invoiceIds = [...new Set((payments || []).map((payment) => payment.invoice_id))];
+    const customerIds = [...new Set((payments || []).map((payment) => payment.customer_id))];
+    const [{ data: invoices, error: invoicesError }, { data: customers, error: customersError }] = await Promise.all([
+      invoiceIds.length ? supabase.from("invoices").select("*").in("id", invoiceIds) : Promise.resolve({ data: [], error: null }),
+      customerIds.length ? supabase.from("customers").select("*").in("id", customerIds) : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (invoicesError) throw new Error(`Could not load payment invoices from Supabase: ${invoicesError.message}`);
+    if (customersError) throw new Error(`Could not load payment customers from Supabase: ${customersError.message}`);
+    return (payments || []).map((payment) => ({
+      ...payment,
+      invoice: (invoices || []).find((invoice) => invoice.id === payment.invoice_id),
+      customer: (customers || []).find((customer) => customer.id === payment.customer_id),
+    })) as Payment[];
+  }
   const data = loadLocalData();
   return data.payments.map((p) => {
     const invoice = data.invoices.find((i) => i.id === p.invoice_id);
